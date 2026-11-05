@@ -10,7 +10,6 @@ function App() {
     const [isRegister, setIsRegister] = useState(false);
     const [user, setUser] = useState(null);
 
-    // Authentication form states
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -21,12 +20,12 @@ function App() {
     const [chargers, setChargers] = useState([]);
     const [activeView, setActiveView] = useState("stations");
 
-    // Favorites states
+    // Favorites
     const [favoriteStations, setFavoriteStations] = useState([]);
     const [favoritesLoading, setFavoritesLoading] = useState(false);
     const [favoriteActionId, setFavoriteActionId] = useState(null);
 
-    // Ratings states
+    // Ratings
     const [ratings, setRatings] = useState([]);
     const [averageRating, setAverageRating] = useState(null);
     const [totalRatings, setTotalRatings] = useState(0);
@@ -35,7 +34,7 @@ function App() {
     const [ratingValue, setRatingValue] = useState("5");
     const [reviewText, setReviewText] = useState("");
 
-    // Booking states
+    // Bookings
     const [selectedCharger, setSelectedCharger] = useState(null);
     const [bookingDate, setBookingDate] = useState("");
     const [startTime, setStartTime] = useState("");
@@ -45,17 +44,20 @@ function App() {
     const [bookingsLoading, setBookingsLoading] = useState(false);
     const [cancellingId, setCancellingId] = useState(null);
 
-    // Charging history states
+    // Charging history
     const [sessions, setSessions] = useState([]);
     const [sessionsLoading, setSessionsLoading] = useState(false);
 
-    // Vehicle states
+    // Vehicles
     const [vehicles, setVehicles] = useState([]);
     const [vehiclesLoading, setVehiclesLoading] = useState(false);
     const [selectedVehicleId, setSelectedVehicleId] = useState("");
     const [vehicleModels, setVehicleModels] = useState([]);
     const [vehicleModelsLoading, setVehicleModelsLoading] = useState(false);
-    const [vehicleForm, setVehicleForm] = useState({ modelId: "", registrationNo: "" });
+    const [vehicleForm, setVehicleForm] = useState({
+        modelId: "",
+        registrationNo: ""
+    });
     const [vehicleSaving, setVehicleSaving] = useState(false);
     const [vehicleDeletingId, setVehicleDeletingId] = useState(null);
     const [isAddingCustomModel, setIsAddingCustomModel] = useState(false);
@@ -66,7 +68,7 @@ function App() {
         connectorType: "CCS2"
     });
 
-    // Active charging session states
+    // Active charging session
     const [activeSession, setActiveSession] = useState(null);
     const [activeSessionLoading, setActiveSessionLoading] = useState(false);
     const [chargingActionLoading, setChargingActionLoading] = useState(false);
@@ -82,15 +84,71 @@ function App() {
 
     const savedToken = () => localStorage.getItem("token");
 
-    // Get today's date
+    const getAuthHeaders = () => ({
+        Authorization: `Bearer ${savedToken()}`
+    });
+
     const getToday = () => {
         const today = new Date();
-
         const year = today.getFullYear();
         const month = String(today.getMonth() + 1).padStart(2, "0");
         const day = String(today.getDate()).padStart(2, "0");
-
         return `${year}-${month}-${day}`;
+    };
+
+    // Fetch stations and update the selected station with fresh data
+    const fetchStations = async () => {
+        try {
+            const response = await fetch(`${API_URL}/stations`);
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || "Unable to fetch stations");
+            }
+
+            const stationList = Array.isArray(data) ? data : [];
+            setStations(stationList);
+
+            setSelectedStation((previous) => {
+                if (!previous) return previous;
+
+                return (
+                    stationList.find(
+                        (station) =>
+                            Number(station.station_id) ===
+                            Number(previous.station_id)
+                    ) || previous
+                );
+            });
+
+            return stationList;
+        } catch (err) {
+            setError(err.message);
+            return [];
+        }
+    };
+
+    // Fetch chargers for a station
+    const fetchStationChargers = async (stationId) => {
+        if (!stationId) return [];
+
+        try {
+            const response = await fetch(
+                `${API_URL}/stations/${stationId}/chargers`
+            );
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || "Unable to fetch chargers");
+            }
+
+            const chargerList = Array.isArray(data) ? data : [];
+            setChargers(chargerList);
+            return chargerList;
+        } catch (err) {
+            setError(err.message);
+            return [];
+        }
     };
 
     // Restore login session
@@ -105,9 +163,7 @@ function App() {
 
             try {
                 const response = await fetch(`${API_URL}/auth/me`, {
-                    headers: {
-                        Authorization: `Bearer ${token}`
-                    }
+                    headers: { Authorization: `Bearer ${token}` }
                 });
 
                 if (!response.ok) {
@@ -116,7 +172,6 @@ function App() {
 
                 const data = await response.json();
                 setUser(data.user);
-
             } catch (err) {
                 localStorage.removeItem("token");
             } finally {
@@ -130,36 +185,16 @@ function App() {
     // Fetch stations after login
     useEffect(() => {
         if (!user || user.role === "ADMIN") return;
-
-        const fetchStations = async () => {
-            try {
-                setError("");
-
-                const response = await fetch(`${API_URL}/stations`);
-
-                if (!response.ok) {
-                    throw new Error("Unable to fetch stations");
-                }
-
-                const data = await response.json();
-                setStations(data);
-
-            } catch (err) {
-                setError(err.message);
-            }
-        };
-
         fetchStations();
     }, [user]);
 
-    // Fetch user's favourites after login
+    // Fetch favorites after login
     useEffect(() => {
         if (!user || user.role === "ADMIN") return;
-
         fetchMyFavorites();
     }, [user]);
 
-    // Fetch vehicles and active charging session after login
+    // Fetch vehicles and active session after login
     useEffect(() => {
         if (!user || user.role === "ADMIN") return;
 
@@ -168,38 +203,47 @@ function App() {
         fetchActiveSession();
     }, [user]);
 
-    // Fetch chargers when a station is selected
+    // Fetch chargers when selected station changes
     useEffect(() => {
-        if (!selectedStation) return;
-
-        const fetchChargers = async () => {
-            setChargerLoading(true);
-            setError("");
+        if (!selectedStation?.station_id) {
             setChargers([]);
+            return;
+        }
+
+        let cancelled = false;
+        const stationId = selectedStation.station_id;
+
+        const loadChargers = async () => {
+            setChargerLoading(true);
 
             try {
                 const response = await fetch(
-                    `${API_URL}/stations/${selectedStation.station_id}/chargers`
+                    `${API_URL}/stations/${stationId}/chargers`
                 );
+                const data = await response.json();
 
                 if (!response.ok) {
-                    throw new Error("Unable to fetch chargers");
+                    throw new Error(data.message || "Unable to fetch chargers");
                 }
 
-                const data = await response.json();
-                setChargers(data);
-
+                if (!cancelled) {
+                    setChargers(Array.isArray(data) ? data : []);
+                }
             } catch (err) {
-                setError(err.message);
+                if (!cancelled) setError(err.message);
             } finally {
-                setChargerLoading(false);
+                if (!cancelled) setChargerLoading(false);
             }
         };
 
-        fetchChargers();
-    }, [selectedStation]);
+        loadChargers();
 
-    // Fetch ratings when a station is selected
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedStation?.station_id]);
+
+    // Fetch ratings when station changes
     useEffect(() => {
         if (!selectedStation) {
             setRatings([]);
@@ -211,12 +255,11 @@ function App() {
         }
 
         fetchStationRatings(selectedStation.station_id);
-    }, [selectedStation]);
+    }, [selectedStation?.station_id]);
 
-    // Register or Login
+    // Login or registration
     const handleSubmit = async (e) => {
         e.preventDefault();
-
         setLoading(true);
         setMessage("");
         setError("");
@@ -225,37 +268,25 @@ function App() {
             if (isRegister) {
                 const response = await fetch(`${API_URL}/auth/register`, {
                     method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        name,
-                        email,
-                        password
-                    })
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name, email, password })
                 });
 
                 const data = await response.json();
 
                 if (!response.ok) {
-                    throw new Error(data.message);
+                    throw new Error(data.message || "Registration failed");
                 }
 
                 setMessage("Registration successful! Please login.");
                 setIsRegister(false);
                 setName("");
                 setPassword("");
-
             } else {
                 const response = await fetch(`${API_URL}/auth/login`, {
                     method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        email,
-                        password
-                    })
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email, password })
                 });
 
                 const data = await response.json();
@@ -264,15 +295,11 @@ function App() {
                     throw new Error(data.message || "Login failed");
                 }
 
-                console.log("Logged-in user:", data.user);
-                console.log("Logged-in role:", data.user?.role);
-
                 localStorage.setItem("token", data.token);
                 setUser(data.user);
                 setPassword("");
                 setMessage("");
             }
-
         } catch (err) {
             setMessage(err.message || "Something went wrong");
         } finally {
@@ -280,16 +307,13 @@ function App() {
         }
     };
 
-    // Fetch current user's bookings
+    // Fetch user's bookings
     const fetchMyBookings = async () => {
         setBookingsLoading(true);
-        setError("");
 
         try {
             const response = await fetch(`${API_URL}/bookings/my`, {
-                headers: {
-                    Authorization: `Bearer ${savedToken()}`
-                }
+                headers: getAuthHeaders()
             });
 
             const data = await response.json();
@@ -298,8 +322,7 @@ function App() {
                 throw new Error(data.message || "Unable to fetch bookings");
             }
 
-            setBookings(data);
-
+            setBookings(Array.isArray(data) ? data : []);
         } catch (err) {
             setError(err.message);
         } finally {
@@ -307,11 +330,9 @@ function App() {
         }
     };
 
-    // Automatically refresh bookings when a booking reaches its end time
+    // Refresh bookings when a booking reaches its end time
     useEffect(() => {
-        if (activeView !== "bookings" || bookings.length === 0) {
-            return;
-        }
+        if (activeView !== "bookings" || bookings.length === 0) return;
 
         const now = Date.now();
 
@@ -319,39 +340,34 @@ function App() {
             .filter((booking) =>
                 ["PENDING", "CONFIRMED"].includes(booking.status)
             )
-            .map((booking) => {
-                return new Date(
+            .map((booking) =>
+                new Date(
                     String(booking.booking_end).replace(" ", "T")
-                ).getTime();
-            })
+                ).getTime()
+            )
             .filter((endTime) =>
                 Number.isFinite(endTime) && endTime > now
             );
 
-        if (futureEndTimes.length === 0) {
-            return;
-        }
+        if (futureEndTimes.length === 0) return;
 
         const nextEndTime = Math.min(...futureEndTimes);
 
         const timer = setTimeout(() => {
             fetchMyBookings();
+            fetchStations();
         }, nextEndTime - now + 1000);
 
         return () => clearTimeout(timer);
-
     }, [activeView, bookings]);
 
     // Fetch charging history
     const fetchChargingHistory = async () => {
         setSessionsLoading(true);
-        setError("");
 
         try {
             const response = await fetch(`${API_URL}/sessions/history`, {
-                headers: {
-                    Authorization: `Bearer ${savedToken()}`
-                }
+                headers: getAuthHeaders()
             });
 
             const data = await response.json();
@@ -363,7 +379,6 @@ function App() {
             }
 
             setSessions(data.sessions || []);
-
         } catch (err) {
             setError(err.message);
         } finally {
@@ -377,9 +392,7 @@ function App() {
 
         try {
             const response = await fetch(`${API_URL}/vehicles/my`, {
-                headers: {
-                    Authorization: `Bearer ${savedToken()}`
-                }
+                headers: getAuthHeaders()
             });
 
             const data = await response.json();
@@ -395,7 +408,6 @@ function App() {
                     previous || String(data.vehicles[0].vehicle_id)
                 );
             }
-
         } catch (err) {
             setError(err.message);
         } finally {
@@ -403,16 +415,23 @@ function App() {
         }
     };
 
-    // Fetch available vehicle models
+    // Fetch vehicle models
     const fetchVehicleModels = async () => {
         setVehicleModelsLoading(true);
+
         try {
             const response = await fetch(`${API_URL}/vehicles/models`, {
-                headers: { Authorization: `Bearer ${savedToken()}` }
+                headers: getAuthHeaders()
             });
+
             const data = await response.json();
-            if (!response.ok) throw new Error(data.message || "Unable to fetch vehicle models");
+
+            if (!response.ok) {
+                throw new Error(data.message || "Unable to fetch vehicle models");
+            }
+
             setVehicleModels(data.models || []);
+
             if (data.models?.length) {
                 setVehicleForm((previous) => ({
                     ...previous,
@@ -426,7 +445,7 @@ function App() {
         }
     };
 
-    // Add a vehicle using an existing model or create a new shared model first
+    // Add vehicle
     const handleAddVehicle = async (e) => {
         e.preventDefault();
         setError("");
@@ -468,29 +487,31 @@ function App() {
         try {
             let modelId = vehicleForm.modelId;
 
-            // Create the model first when the customer adds a custom model
             if (isAddingCustomModel) {
                 const modelResponse = await fetch(`${API_URL}/vehicles/models`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        Authorization: `Bearer ${savedToken()}`
+                        ...getAuthHeaders()
                     },
                     body: JSON.stringify({
                         manufacturer: customModelForm.manufacturer.trim(),
                         modelName: customModelForm.modelName.trim(),
-                        batteryCapacityKwh: Number(customModelForm.batteryCapacityKwh),
+                        batteryCapacityKwh: Number(
+                            customModelForm.batteryCapacityKwh
+                        ),
                         connectorType: customModelForm.connectorType.trim()
                     })
                 });
 
                 const modelData = await modelResponse.json();
 
-                // If the model already exists, reuse its ID rather than creating a duplicate
                 if (modelResponse.status === 409 && modelData.modelId) {
                     modelId = String(modelData.modelId);
                 } else if (!modelResponse.ok) {
-                    throw new Error(modelData.message || "Unable to add vehicle model.");
+                    throw new Error(
+                        modelData.message || "Unable to add vehicle model"
+                    );
                 } else {
                     modelId = String(modelData.modelId);
                 }
@@ -504,7 +525,7 @@ function App() {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    Authorization: `Bearer ${savedToken()}`
+                    ...getAuthHeaders()
                 },
                 body: JSON.stringify({
                     modelId: Number(modelId),
@@ -515,7 +536,9 @@ function App() {
             const vehicleData = await vehicleResponse.json();
 
             if (!vehicleResponse.ok) {
-                throw new Error(vehicleData.message || "Unable to add vehicle.");
+                throw new Error(
+                    vehicleData.message || "Unable to add vehicle"
+                );
             }
 
             setVehicleForm({ modelId: "", registrationNo: "" });
@@ -527,7 +550,11 @@ function App() {
             });
             setIsAddingCustomModel(false);
 
-            await Promise.all([fetchVehicleModels(), fetchMyVehicles()]);
+            await Promise.all([
+                fetchVehicleModels(),
+                fetchMyVehicles()
+            ]);
+
             setMessage("Vehicle added successfully.");
         } catch (err) {
             setError(err.message || "Unable to add vehicle.");
@@ -536,25 +563,45 @@ function App() {
         }
     };
 
-    // Delete a vehicle
+    // Delete vehicle
     const handleDeleteVehicle = async (vehicleId) => {
-        const confirmed = window.confirm("Are you sure you want to delete this vehicle?");
+        const confirmed = window.confirm(
+            "Are you sure you want to delete this vehicle?"
+        );
+
         if (!confirmed) return;
+
         setError("");
         setMessage("");
         setVehicleDeletingId(vehicleId);
+
         try {
             const response = await fetch(`${API_URL}/vehicles/${vehicleId}`, {
                 method: "DELETE",
-                headers: { Authorization: `Bearer ${savedToken()}` }
+                headers: getAuthHeaders()
             });
+
             const data = await response.json();
-            if (!response.ok) throw new Error(data.message || "Unable to delete vehicle");
-            setVehicles((previous) => previous.filter((vehicle) => vehicle.vehicle_id !== vehicleId));
-            if (String(selectedVehicleId) === String(vehicleId)) {
-                const nextVehicle = vehicles.find((vehicle) => vehicle.vehicle_id !== vehicleId);
-                setSelectedVehicleId(nextVehicle ? String(nextVehicle.vehicle_id) : "");
+
+            if (!response.ok) {
+                throw new Error(data.message || "Unable to delete vehicle");
             }
+
+            const remainingVehicles = vehicles.filter(
+                (vehicle) =>
+                    Number(vehicle.vehicle_id) !== Number(vehicleId)
+            );
+
+            setVehicles(remainingVehicles);
+
+            if (Number(selectedVehicleId) === Number(vehicleId)) {
+                setSelectedVehicleId(
+                    remainingVehicles.length
+                        ? String(remainingVehicles[0].vehicle_id)
+                        : ""
+                );
+            }
+
             setMessage("Vehicle deleted successfully.");
         } catch (err) {
             setError(err.message);
@@ -570,18 +617,20 @@ function App() {
         setSelectedCharger(null);
         setMessage("");
         setError("");
-        await Promise.all([fetchMyVehicles(), fetchVehicleModels()]);
+
+        await Promise.all([
+            fetchMyVehicles(),
+            fetchVehicleModels()
+        ]);
     };
 
-    // Fetch ongoing charging session
+    // Fetch active charging session
     const fetchActiveSession = async () => {
         setActiveSessionLoading(true);
 
         try {
             const response = await fetch(`${API_URL}/sessions/active`, {
-                headers: {
-                    Authorization: `Bearer ${savedToken()}`
-                }
+                headers: getAuthHeaders()
             });
 
             const data = await response.json();
@@ -593,7 +642,6 @@ function App() {
             }
 
             setActiveSession(data.sessions?.[0] || null);
-
         } catch (err) {
             setError(err.message);
         } finally {
@@ -624,7 +672,7 @@ function App() {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    Authorization: `Bearer ${savedToken()}`
+                    ...getAuthHeaders()
                 },
                 body: JSON.stringify({
                     bookingId: Number(bookingId),
@@ -640,21 +688,15 @@ function App() {
 
             setMessage("Charging session started successfully!");
 
-            await fetchActiveSession();
-            await fetchMyBookings();
+            await Promise.all([
+                fetchActiveSession(),
+                fetchMyBookings(),
+                fetchStations()
+            ]);
 
-            // Refresh station and charger information
             if (selectedStation) {
-                const stationResponse = await fetch(
-                    `${API_URL}/stations/${selectedStation.station_id}/chargers`
-                );
-
-                if (stationResponse.ok) {
-                    const chargerData = await stationResponse.json();
-                    setChargers(chargerData);
-                }
+                await fetchStationChargers(selectedStation.station_id);
             }
-
         } catch (err) {
             setError(err.message);
         } finally {
@@ -683,11 +725,9 @@ function App() {
                     method: "PATCH",
                     headers: {
                         "Content-Type": "application/json",
-                        Authorization: `Bearer ${savedToken()}`
+                        ...getAuthHeaders()
                     },
-                    body: JSON.stringify({
-                        paymentMethod
-                    })
+                    body: JSON.stringify({ paymentMethod })
                 }
             );
 
@@ -699,24 +739,17 @@ function App() {
 
             setSessionResult(data);
             setActiveSession(null);
-
             setMessage("Charging session completed successfully!");
 
-            await fetchChargingHistory();
-            await fetchMyBookings();
+            await Promise.all([
+                fetchChargingHistory(),
+                fetchMyBookings(),
+                fetchStations()
+            ]);
 
-            // Refresh charger information if a station is selected
             if (selectedStation) {
-                const stationResponse = await fetch(
-                    `${API_URL}/stations/${selectedStation.station_id}/chargers`
-                );
-
-                if (stationResponse.ok) {
-                    const chargerData = await stationResponse.json();
-                    setChargers(chargerData);
-                }
+                await fetchStationChargers(selectedStation.station_id);
             }
-
         } catch (err) {
             setError(err.message);
         } finally {
@@ -739,7 +772,7 @@ function App() {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        Authorization: `Bearer ${savedToken()}`
+                        ...getAuthHeaders()
                     },
                     body: JSON.stringify({ outcome })
                 }
@@ -748,7 +781,9 @@ function App() {
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.message || "Payment processing failed.");
+                throw new Error(
+                    data.message || "Payment processing failed"
+                );
             }
 
             setSessionResult((previous) => ({
@@ -757,12 +792,12 @@ function App() {
             }));
 
             setMessage(
-                `${data.message} MongoDB storage: ${data.mongoStored ? "successful" : "pending"
+                `${data.message} MongoDB storage: ${
+                    data.mongoStored ? "successful" : "pending"
                 }`
             );
 
             await fetchChargingHistory();
-
         } catch (err) {
             setError(err.message);
         } finally {
@@ -770,15 +805,13 @@ function App() {
         }
     };
 
-    // Fetch favourites
+    // Fetch favorites
     const fetchMyFavorites = async () => {
         setFavoritesLoading(true);
 
         try {
             const response = await fetch(`${API_URL}/favorites/my`, {
-                headers: {
-                    Authorization: `Bearer ${savedToken()}`
-                }
+                headers: getAuthHeaders()
             });
 
             const data = await response.json();
@@ -790,7 +823,6 @@ function App() {
             }
 
             setFavoriteStations(data.favorites || []);
-
         } catch (err) {
             setError(err.message);
         } finally {
@@ -798,14 +830,14 @@ function App() {
         }
     };
 
-    // Check whether a station is a favourite
-    const isFavorite = (stationId) => {
-        return favoriteStations.some(
-            (station) => Number(station.station_id) === Number(stationId)
+    // Check favorite status
+    const isFavorite = (stationId) =>
+        favoriteStations.some(
+            (station) =>
+                Number(station.station_id) === Number(stationId)
         );
-    };
 
-    // Add or remove a favourite
+    // Toggle favorite
     const handleToggleFavorite = async (stationId) => {
         setError("");
         setMessage("");
@@ -822,7 +854,7 @@ function App() {
                     method: alreadyFavorite ? "DELETE" : "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        Authorization: `Bearer ${savedToken()}`
+                        ...getAuthHeaders()
                     },
                     ...(alreadyFavorite
                         ? {}
@@ -849,10 +881,10 @@ function App() {
                 );
 
                 setMessage("Station removed from favourites.");
-
             } else {
                 const station = stations.find(
-                    (item) => Number(item.station_id) === Number(stationId)
+                    (item) =>
+                        Number(item.station_id) === Number(stationId)
                 );
 
                 if (station) {
@@ -868,7 +900,6 @@ function App() {
 
                 setMessage("Station added to favourites.");
             }
-
         } catch (err) {
             setError(err.message);
         } finally {
@@ -887,7 +918,7 @@ function App() {
         await fetchMyFavorites();
     };
 
-    // Fetch ratings for a station
+    // Fetch station ratings
     const fetchStationRatings = async (stationId) => {
         setRatingsLoading(true);
 
@@ -920,7 +951,6 @@ function App() {
                 setRatingValue("5");
                 setReviewText("");
             }
-
         } catch (err) {
             setError(err.message);
         } finally {
@@ -928,7 +958,7 @@ function App() {
         }
     };
 
-    // Submit or update a station rating
+    // Submit or update rating
     const handleRatingSubmit = async (e) => {
         e.preventDefault();
 
@@ -952,7 +982,7 @@ function App() {
                 method: ownRating ? "PUT" : "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    Authorization: `Bearer ${savedToken()}`
+                    ...getAuthHeaders()
                 },
                 body: JSON.stringify(
                     ownRating
@@ -983,7 +1013,7 @@ function App() {
             );
 
             await fetchStationRatings(selectedStation.station_id);
-
+            await fetchStations();
         } catch (err) {
             setError(err.message);
         } finally {
@@ -1013,13 +1043,16 @@ function App() {
         await fetchChargingHistory();
     };
 
-    // Open stations section
-    const handleStations = () => {
+    // Open Stations
+    const handleStations = async () => {
         setActiveView("stations");
         setSelectedStation(null);
         setSelectedCharger(null);
+        setChargers([]);
         setError("");
         setMessage("");
+
+        await fetchStations();
     };
 
     // Open booking form
@@ -1032,12 +1065,17 @@ function App() {
         setError("");
     };
 
-    // Create a booking
+    // Create booking
     const handleBookingSubmit = async (e) => {
         e.preventDefault();
 
         setMessage("");
         setError("");
+
+        if (!selectedCharger) {
+            setError("Please select a charger.");
+            return;
+        }
 
         if (!bookingDate || !startTime || !endTime) {
             setError("Please select a date, start time and end time.");
@@ -1072,7 +1110,7 @@ function App() {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    Authorization: `Bearer ${savedToken()}`
+                    ...getAuthHeaders()
                 },
                 body: JSON.stringify({
                     chargerId: selectedCharger.charger_id,
@@ -1093,6 +1131,14 @@ function App() {
 
             setSelectedCharger(null);
 
+            // Refresh all availability information after booking
+            await fetchStations();
+
+            if (selectedStation) {
+                await fetchStationChargers(selectedStation.station_id);
+            }
+
+            await fetchMyBookings();
         } catch (err) {
             setError(err.message);
         } finally {
@@ -1100,7 +1146,7 @@ function App() {
         }
     };
 
-    // Cancel a booking
+    // Cancel booking
     const handleCancelBooking = async (bookingId) => {
         const confirmed = window.confirm(
             "Are you sure you want to cancel this booking?"
@@ -1117,9 +1163,7 @@ function App() {
                 `${API_URL}/bookings/${bookingId}/cancel`,
                 {
                     method: "PATCH",
-                    headers: {
-                        Authorization: `Bearer ${savedToken()}`
-                    }
+                    headers: getAuthHeaders()
                 }
             );
 
@@ -1131,8 +1175,14 @@ function App() {
 
             setMessage("Booking cancelled successfully!");
 
-            await fetchMyBookings();
+            await Promise.all([
+                fetchMyBookings(),
+                fetchStations()
+            ]);
 
+            if (selectedStation) {
+                await fetchStationChargers(selectedStation.station_id);
+            }
         } catch (err) {
             setError(err.message);
         } finally {
@@ -1153,7 +1203,7 @@ function App() {
         return date.toLocaleString();
     };
 
-    // Check whether a booking has expired
+    // Check whether booking has expired
     const isBookingExpired = (booking) => {
         if (
             booking.status !== "CONFIRMED" &&
@@ -1162,7 +1212,6 @@ function App() {
             return booking.status === "EXPIRED";
         }
 
-        // Do not expire a booking that has an ongoing charging session
         if (booking.session_status === "ONGOING") {
             return false;
         }
@@ -1180,7 +1229,11 @@ function App() {
             return "Not available";
         }
 
-        return `₹${Number(value).toFixed(2)}`;
+        const amount = Number(value);
+
+        return Number.isFinite(amount)
+            ? `₹${amount.toFixed(2)}`
+            : "Not available";
     };
 
     // Logout
@@ -1221,7 +1274,6 @@ function App() {
     // Reusable station card
     const renderStationCard = (station) => (
         <div className="station-card" key={station.station_id}>
-
             <h3>{station.station_name}</h3>
 
             <p>{station.address}</p>
@@ -1229,54 +1281,39 @@ function App() {
 
             <p>Total Chargers: {station.total_chargers ?? 0}</p>
             <p>Available: {station.available_chargers ?? 0}</p>
+            <p>Booked: {station.booked_chargers ?? 0}</p>
             <p>Occupied: {station.occupied_chargers ?? 0}</p>
 
-            <hr />
-
-            <h4>Station Information</h4>
-
-            <p>
-                Snapshot Available Chargers:{" "}
-                {station.snapshot_available_count ?? 0}
-            </p>
-
-            <p>
-                Utilization:{" "}
-                {Number(station.utilization_rate ?? 0).toFixed(2)}%
-            </p>
-
-           
-
-           
+            {station.recommendation_rank != null && (
+                <div>
+                    <h4>Station Recommendation</h4>
+                    <p>Rank: #{station.recommendation_rank}</p>
+                    <p>
+                        Recommendation Score:{" "}
+                        {Number(station.recommendation_score ?? 0).toFixed(2)}
+                    </p>
+                    {station.recommendation_reason && (
+                        <p>{station.recommendation_reason}</p>
+                    )}
+                </div>
+            )}
 
             <h4>Demand Forecast</h4>
-
-            <p>
-                Predicted Demand: {station.predicted_demand ?? 0}
-            </p>
-
-            <p>
-                Predicted Queue: {station.predicted_queue ?? 0}
-            </p>
-
+            <p>Predicted Demand: {station.predicted_demand ?? 0}</p>
+            <p>Predicted Queue: {station.predicted_queue ?? 0}</p>
 
             <h4>Pricing and Rating</h4>
-
             <p>
                 Price: {formatCurrency(station.price_per_kwh)} / kWh
             </p>
-
             <p>
                 Average Rating:{" "}
                 {Number(station.average_rating ?? 0).toFixed(1)} / 5
             </p>
 
-            <span className="status">
-                {station.status}
-            </span>
+            <span className="status">{station.status}</span>
 
             <div className="station-card-actions">
-
                 <button
                     className="view-button"
                     onClick={() => {
@@ -1307,9 +1344,7 @@ function App() {
                             ? "♥ Remove Favorite"
                             : "♡ Add Favorite"}
                 </button>
-
             </div>
-
         </div>
     );
 
@@ -1322,12 +1357,11 @@ function App() {
         );
     }
 
-    // Login and Registration page
+    // Login and registration
     if (!user) {
         return (
             <div className="auth-container">
                 <div className="auth-card">
-
                     <h1>⚡ EVCharge</h1>
 
                     <p className="subtitle">
@@ -1339,7 +1373,6 @@ function App() {
                     </h2>
 
                     <form onSubmit={handleSubmit}>
-
                         {isRegister && (
                             <input
                                 type="text"
@@ -1374,12 +1407,9 @@ function App() {
                                     ? "Register"
                                     : "Login"}
                         </button>
-
                     </form>
 
-                    {message && (
-                        <p className="message">{message}</p>
-                    )}
+                    {message && <p className="message">{message}</p>}
 
                     <p className="switch-text">
                         {isRegister
@@ -1396,13 +1426,12 @@ function App() {
                             {isRegister ? "Login" : "Register"}
                         </button>
                     </p>
-
                 </div>
             </div>
         );
     }
 
-    // Admin Dashboard
+    // Admin dashboard
     if (String(user.role || "").trim().toUpperCase() === "ADMIN") {
         return (
             <AdminDashboard
@@ -1413,36 +1442,24 @@ function App() {
         );
     }
 
-    // Customer Dashboard
+    // Customer dashboard
     return (
         <div className="dashboard">
-
             <header className="navbar">
-
                 <h1>⚡ EVCharge</h1>
 
                 <div className="navbar-right">
-
                     <span>Welcome, {user.name}</span>
 
-                    <button
-                        className="nav-button"
-                        onClick={handleStations}
-                    >
+                    <button className="nav-button" onClick={handleStations}>
                         Stations
                     </button>
 
-                    <button
-                        className="nav-button"
-                        onClick={handleMyFavorites}
-                    >
+                    <button className="nav-button" onClick={handleMyFavorites}>
                         My Favorites
                     </button>
 
-                    <button
-                        className="nav-button"
-                        onClick={handleMyBookings}
-                    >
+                    <button className="nav-button" onClick={handleMyBookings}>
                         My Bookings
                     </button>
 
@@ -1453,80 +1470,52 @@ function App() {
                         Charging History
                     </button>
 
-                    <button
-                        className="nav-button"
-                        onClick={handleMyVehicles}
-                    >
+                    <button className="nav-button" onClick={handleMyVehicles}>
                         My Vehicles
                     </button>
 
-                    <button
-                        className="logout-button"
-                        onClick={handleLogout}
-                    >
+                    <button className="logout-button" onClick={handleLogout}>
                         Logout
                     </button>
-
                 </div>
-
             </header>
 
             <main>
+                {error && <p className="error-message">{error}</p>}
+                {message && <p className="message">{message}</p>}
 
-                {error && (
-                    <p className="error-message">{error}</p>
-                )}
-
-                {message && (
-                    <p className="message">{message}</p>
-                )}
-
-                {/* Active Charging Session */}
+                {/* Active charging session */}
                 {activeSessionLoading ? (
                     <p>Checking active charging session...</p>
                 ) : activeSession ? (
-
                     <div className="station-card active-session-card">
-
                         <h2>⚡ Charging In Progress</h2>
-
                         <span className="status">ONGOING</span>
 
                         <h3>{activeSession.station_name}</h3>
-
                         <p>{activeSession.address}</p>
 
                         <div className="history-details">
-
                             <p>Session ID: #{activeSession.session_id}</p>
-
                             <p>
                                 Vehicle: {activeSession.manufacturer}{" "}
                                 {activeSession.model_name}
                             </p>
-
                             <p>
                                 Registration: {activeSession.registration_no}
                             </p>
-
                             <p>Charger: #{activeSession.charger_id}</p>
-
                             <p>Connector: {activeSession.connector_type}</p>
-
                             <p>Power: {activeSession.power_kw} kW</p>
-
                             <p>
                                 Started: {formatDateTime(activeSession.start_time)}
                             </p>
-
                             <p>
                                 Price: {formatCurrency(activeSession.price_per_kwh)} / kWh
                             </p>
-
                         </div>
 
                         <label>Payment Method</label>
-
                         <select
                             value={paymentMethod}
                             onChange={(e) => setPaymentMethod(e.target.value)}
@@ -1546,49 +1535,34 @@ function App() {
                                 ? "Ending Session..."
                                 : "End Charging"}
                         </button>
-
                     </div>
-
                 ) : null}
 
-                {/* Completed Session Result */}
+                {/* Completed session result */}
                 {sessionResult && (
-
                     <div className="station-card">
-
                         <h2>Charging Summary</h2>
-
                         <span className="status">COMPLETED</span>
 
                         <p>Session ID: #{sessionResult.sessionId}</p>
-
                         <p>
                             Duration:{" "}
                             {Math.floor(sessionResult.durationSeconds / 60)} minutes{" "}
                             {sessionResult.durationSeconds % 60} seconds
                         </p>
-
                         <p>
-                            Energy Delivered:{" "}
-                            {sessionResult.energyDeliveredKwh} kWh
+                            Energy Delivered: {sessionResult.energyDeliveredKwh} kWh
                         </p>
-
                         <p>
-                            Price per kWh:{" "}
-                            {formatCurrency(sessionResult.pricePerKwh)}
+                            Price per kWh: {formatCurrency(sessionResult.pricePerKwh)}
                         </p>
 
                         <h3>
                             Total Cost: {formatCurrency(sessionResult.totalCost)}
                         </h3>
 
-                        <p>
-                            Payment Status: {sessionResult.paymentStatus}
-                        </p>
-
-                        <p>
-                            Payment Method: {paymentMethod}
-                        </p>
+                        <p>Payment Status: {sessionResult.paymentStatus}</p>
+                        <p>Payment Method: {paymentMethod}</p>
 
                         {sessionResult.paymentStatus === "PENDING" && (
                             <div>
@@ -1618,30 +1592,42 @@ function App() {
                         >
                             View Charging History
                         </button>
-
                     </div>
-
                 )}
 
-                {/* My Vehicles Page */}
+                {/* My Vehicles */}
                 {activeView === "vehicles" ? (
                     <section className="vehicles-section">
                         <h2>My Vehicles</h2>
-                        <p>Manage the electric vehicles registered to your account.</p>
+                        <p>
+                            Manage the electric vehicles registered to your account.
+                        </p>
 
                         <div className="station-card vehicle-form-card">
                             <h3>Add a Vehicle</h3>
 
-                            <form className="booking-form" onSubmit={handleAddVehicle}>
+                            <form
+                                className="booking-form"
+                                onSubmit={handleAddVehicle}
+                            >
                                 <label>Vehicle Model Option</label>
 
                                 <div
                                     className="vehicle-model-options"
-                                    style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "12px" }}
+                                    style={{
+                                        display: "flex",
+                                        gap: "10px",
+                                        flexWrap: "wrap",
+                                        marginBottom: "12px"
+                                    }}
                                 >
                                     <button
                                         type="button"
-                                        className={!isAddingCustomModel ? "booking-button" : "view-button"}
+                                        className={
+                                            !isAddingCustomModel
+                                                ? "booking-button"
+                                                : "view-button"
+                                        }
                                         onClick={() => {
                                             setIsAddingCustomModel(false);
                                             setError("");
@@ -1653,7 +1639,11 @@ function App() {
 
                                     <button
                                         type="button"
-                                        className={isAddingCustomModel ? "booking-button" : "view-button"}
+                                        className={
+                                            isAddingCustomModel
+                                                ? "booking-button"
+                                                : "view-button"
+                                        }
                                         onClick={() => {
                                             setIsAddingCustomModel(true);
                                             setError("");
@@ -1666,7 +1656,10 @@ function App() {
 
                                 {!isAddingCustomModel ? (
                                     <>
-                                        <label htmlFor="vehicleModel">Select Vehicle Model</label>
+                                        <label htmlFor="vehicleModel">
+                                            Select Vehicle Model
+                                        </label>
+
                                         <select
                                             id="vehicleModel"
                                             value={vehicleForm.modelId}
@@ -1678,27 +1671,38 @@ function App() {
                                             }
                                             required
                                         >
-                                            <option value="">Choose a vehicle model</option>
+                                            <option value="">
+                                                Choose a vehicle model
+                                            </option>
+
                                             {vehicleModels.map((model) => (
                                                 <option
                                                     key={model.model_id}
                                                     value={model.model_id}
                                                 >
-                                                    {model.manufacturer} {model.model_name}
-                                                    {" "}({model.battery_capacity_kwh} kWh, {model.connector_type})
+                                                    {model.manufacturer}{" "}
+                                                    {model.model_name} (
+                                                    {model.battery_capacity_kwh} kWh,{" "}
+                                                    {model.connector_type})
                                                 </option>
                                             ))}
                                         </select>
 
-                                        {!vehicleModelsLoading && vehicleModels.length === 0 && (
-                                            <p>No existing models are available. Select "Add New Model" to register one.</p>
-                                        )}
+                                        {!vehicleModelsLoading &&
+                                            vehicleModels.length === 0 && (
+                                                <p>
+                                                    No existing models are available.
+                                                    Select "Add New Model" to register one.
+                                                </p>
+                                            )}
                                     </>
                                 ) : (
                                     <>
                                         <h4>New Vehicle Model Details</h4>
 
-                                        <label htmlFor="customManufacturer">Manufacturer</label>
+                                        <label htmlFor="customManufacturer">
+                                            Manufacturer
+                                        </label>
                                         <input
                                             id="customManufacturer"
                                             type="text"
@@ -1714,7 +1718,9 @@ function App() {
                                             required
                                         />
 
-                                        <label htmlFor="customModelName">Model Name</label>
+                                        <label htmlFor="customModelName">
+                                            Model Name
+                                        </label>
                                         <input
                                             id="customModelName"
                                             type="text"
@@ -1730,7 +1736,9 @@ function App() {
                                             required
                                         />
 
-                                        <label htmlFor="customBatteryCapacity">Battery Capacity (kWh)</label>
+                                        <label htmlFor="customBatteryCapacity">
+                                            Battery Capacity (kWh)
+                                        </label>
                                         <input
                                             id="customBatteryCapacity"
                                             type="number"
@@ -1747,7 +1755,9 @@ function App() {
                                             required
                                         />
 
-                                        <label htmlFor="customConnectorType">Connector Type</label>
+                                        <label htmlFor="customConnectorType">
+                                            Connector Type
+                                        </label>
                                         <select
                                             id="customConnectorType"
                                             value={customModelForm.connectorType}
@@ -1767,7 +1777,9 @@ function App() {
                                     </>
                                 )}
 
-                                <label htmlFor="registrationNo">Registration Number</label>
+                                <label htmlFor="registrationNo">
+                                    Registration Number
+                                </label>
                                 <input
                                     id="registrationNo"
                                     type="text"
@@ -1788,12 +1800,15 @@ function App() {
                                     className="booking-button"
                                     disabled={vehicleSaving || vehicleModelsLoading}
                                 >
-                                    {vehicleSaving ? "Adding Vehicle..." : "Add Vehicle"}
+                                    {vehicleSaving
+                                        ? "Adding Vehicle..."
+                                        : "Add Vehicle"}
                                 </button>
                             </form>
                         </div>
 
                         <h3>Registered Vehicles</h3>
+
                         {vehiclesLoading ? (
                             <p>Loading your vehicles...</p>
                         ) : vehicles.length === 0 ? (
@@ -1804,22 +1819,52 @@ function App() {
                         ) : (
                             <div className="station-grid">
                                 {vehicles.map((vehicle) => (
-                                    <div className="station-card vehicle-card" key={vehicle.vehicle_id}>
-                                        <h3>{vehicle.manufacturer} {vehicle.model_name}</h3>
-                                        <p>Registration: {vehicle.registration_no}</p>
-                                        <p>Battery Capacity: {vehicle.battery_capacity_kwh} kWh</p>
-                                        <p>Connector Type: {vehicle.connector_type}</p>
+                                    <div
+                                        className="station-card vehicle-card"
+                                        key={vehicle.vehicle_id}
+                                    >
+                                        <h3>
+                                            {vehicle.manufacturer} {vehicle.model_name}
+                                        </h3>
+                                        <p>
+                                            Registration: {vehicle.registration_no}
+                                        </p>
+                                        <p>
+                                            Battery Capacity:{" "}
+                                            {vehicle.battery_capacity_kwh} kWh
+                                        </p>
+                                        <p>
+                                            Connector Type: {vehicle.connector_type}
+                                        </p>
                                         <p>Vehicle ID: #{vehicle.vehicle_id}</p>
+
                                         <button
                                             className="cancel-button"
-                                            onClick={() => handleDeleteVehicle(vehicle.vehicle_id)}
-                                            disabled={vehicleDeletingId === vehicle.vehicle_id || (activeSession && Number(activeSession.vehicle_id) === Number(vehicle.vehicle_id))}
+                                            onClick={() =>
+                                                handleDeleteVehicle(vehicle.vehicle_id)
+                                            }
+                                            disabled={
+                                                vehicleDeletingId === vehicle.vehicle_id ||
+                                                (
+                                                    activeSession &&
+                                                    Number(activeSession.vehicle_id) ===
+                                                    Number(vehicle.vehicle_id)
+                                                )
+                                            }
                                         >
-                                            {vehicleDeletingId === vehicle.vehicle_id ? "Deleting..." : "Delete Vehicle"}
+                                            {vehicleDeletingId === vehicle.vehicle_id
+                                                ? "Deleting..."
+                                                : "Delete Vehicle"}
                                         </button>
-                                        {activeSession && Number(activeSession.vehicle_id) === Number(vehicle.vehicle_id) && (
-                                            <p>This vehicle is currently being used for an active charging session.</p>
-                                        )}
+
+                                        {activeSession &&
+                                            Number(activeSession.vehicle_id) ===
+                                            Number(vehicle.vehicle_id) && (
+                                                <p>
+                                                    This vehicle is currently being
+                                                    used for an active charging session.
+                                                </p>
+                                            )}
                                     </div>
                                 ))}
                             </div>
@@ -1831,11 +1876,9 @@ function App() {
                     </section>
 
                 ) : activeView === "history" ? (
-
+                    /* Charging History */
                     <section>
-
                         <h2>Charging History</h2>
-
                         <p>
                             View your previous charging sessions and payment details.
                         </p>
@@ -1857,28 +1900,26 @@ function App() {
                             )}
 
                         <div className="station-grid">
-
                             {!sessionsLoading && sessions.map((session) => (
-
                                 <div
                                     className="station-card history-card"
                                     key={session.session_id}
                                 >
-
                                     <h3>{session.station_name}</h3>
-
                                     <p>{session.address}</p>
 
                                     <div className="history-details">
-
                                         <h4>Session Details</h4>
-
                                         <p>Session ID: #{session.session_id}</p>
                                         <p>Charger: #{session.charger_id}</p>
                                         <p>Connector: {session.connector_type}</p>
                                         <p>Power: {session.power_kw} kW</p>
-                                        <p>Start: {formatDateTime(session.start_time)}</p>
-                                        <p>End: {formatDateTime(session.end_time)}</p>
+                                        <p>
+                                            Start: {formatDateTime(session.start_time)}
+                                        </p>
+                                        <p>
+                                            End: {formatDateTime(session.end_time)}
+                                        </p>
                                         <p>
                                             Energy Delivered:{" "}
                                             {session.energy_delivered_kwh ?? "Not available"} kWh
@@ -1900,20 +1941,16 @@ function App() {
                                         >
                                             {session.session_status || "Unknown"}
                                         </span>
-
                                     </div>
 
                                     <div className="history-details">
-
                                         <h4>Payment Details</h4>
-
                                         <p>
                                             Payment ID:{" "}
                                             {session.payment_id
                                                 ? `#${session.payment_id}`
                                                 : "Not available"}
                                         </p>
-
                                         <p>Amount: {formatCurrency(session.amount)}</p>
                                         <p>
                                             Payment Method:{" "}
@@ -1927,37 +1964,23 @@ function App() {
                                             Payment Status:{" "}
                                             {session.payment_status || "Not available"}
                                         </p>
-
                                     </div>
-
                                 </div>
-
                             ))}
-
                         </div>
 
-                        <button
-                            className="back-button"
-                            onClick={handleStations}
-                        >
+                        <button className="back-button" onClick={handleStations}>
                             ← Back to Stations
                         </button>
-
                     </section>
 
                 ) : activeView === "bookings" ? (
-
-                    /* My Bookings Page */
-
+                    /* My Bookings */
                     <section>
-
                         <h2>My Bookings</h2>
-
                         <p>View and manage your charging reservations.</p>
 
-                        {bookingsLoading && (
-                            <p>Loading your bookings...</p>
-                        )}
+                        {bookingsLoading && <p>Loading your bookings...</p>}
 
                         {!bookingsLoading &&
                             bookings.length === 0 &&
@@ -1966,9 +1989,7 @@ function App() {
                             )}
 
                         <div className="station-grid">
-
                             {!bookingsLoading && bookings.map((booking) => {
-
                                 const expired = isBookingExpired(booking);
 
                                 return (
@@ -1976,15 +1997,18 @@ function App() {
                                         className="station-card"
                                         key={booking.booking_id}
                                     >
-
                                         <h3>{booking.station_name}</h3>
                                         <p>{booking.address}</p>
                                         <p>Booking ID: #{booking.booking_id}</p>
                                         <p>Charger: #{booking.charger_id}</p>
                                         <p>Connector: {booking.connector_type}</p>
                                         <p>Power: {booking.power_kw} kW</p>
-                                        <p>Start: {formatDateTime(booking.booking_start)}</p>
-                                        <p>End: {formatDateTime(booking.booking_end)}</p>
+                                        <p>
+                                            Start: {formatDateTime(booking.booking_start)}
+                                        </p>
+                                        <p>
+                                            End: {formatDateTime(booking.booking_end)}
+                                        </p>
 
                                         <span
                                             className={
@@ -1996,22 +2020,19 @@ function App() {
                                             {expired ? "EXPIRED" : booking.status}
                                         </span>
 
-                                        {/* Start Charging Controls */}
                                         {booking.status === "CONFIRMED" && !expired && (
-
                                             <div className="charging-controls">
-
                                                 <h4>Start Charging</h4>
 
                                                 {vehiclesLoading ? (
                                                     <p>Loading vehicles...</p>
                                                 ) : vehicles.length === 0 ? (
-                                                    <p>No vehicle registered to your account.</p>
+                                                    <p>
+                                                        No vehicle registered to your account.
+                                                    </p>
                                                 ) : (
-
                                                     <>
                                                         <label>Select Your Vehicle</label>
-
                                                         <select
                                                             value={selectedVehicleId}
                                                             onChange={(e) =>
@@ -2022,27 +2043,24 @@ function App() {
                                                                 chargingActionLoading
                                                             }
                                                         >
-
                                                             {vehicles.map((vehicle) => (
-
                                                                 <option
                                                                     key={vehicle.vehicle_id}
                                                                     value={vehicle.vehicle_id}
                                                                 >
                                                                     {vehicle.manufacturer}{" "}
-                                                                    {vehicle.model_name}
-                                                                    {" - "}
+                                                                    {vehicle.model_name} -{" "}
                                                                     {vehicle.registration_no}
                                                                 </option>
-
                                                             ))}
-
                                                         </select>
 
                                                         <button
                                                             className="booking-button"
                                                             onClick={() =>
-                                                                handleStartCharging(booking.booking_id)
+                                                                handleStartCharging(
+                                                                    booking.booking_id
+                                                                )
                                                             }
                                                             disabled={
                                                                 !!activeSession ||
@@ -2057,58 +2075,44 @@ function App() {
                                                                     : "⚡ Start Charging"}
                                                         </button>
                                                     </>
-
                                                 )}
-
                                             </div>
-
                                         )}
 
-                                        {/* Cancel Booking */}
                                         {(booking.status === "CONFIRMED" ||
                                             booking.status === "PENDING") &&
                                             !expired && (
-
                                                 <button
                                                     className="cancel-button"
                                                     onClick={() =>
-                                                        handleCancelBooking(booking.booking_id)
+                                                        handleCancelBooking(
+                                                            booking.booking_id
+                                                        )
                                                     }
-                                                    disabled={cancellingId === booking.booking_id}
+                                                    disabled={
+                                                        cancellingId === booking.booking_id
+                                                    }
                                                 >
                                                     {cancellingId === booking.booking_id
                                                         ? "Cancelling..."
                                                         : "Cancel Booking"}
                                                 </button>
-
                                             )}
-
                                     </div>
                                 );
                             })}
-
                         </div>
 
-                        <button
-                            className="back-button"
-                            onClick={handleStations}
-                        >
+                        <button className="back-button" onClick={handleStations}>
                             ← Back to Stations
                         </button>
-
                     </section>
 
                 ) : activeView === "favorites" ? (
-
-                    /* My Favorites Page */
-
+                    /* My Favorites */
                     <section>
-
                         <h2>My Favorite Stations</h2>
-
-                        <p>
-                            Your saved charging stations are listed here.
-                        </p>
+                        <p>Your saved charging stations are listed here.</p>
 
                         {favoritesLoading && (
                             <p>Loading your favourite stations...</p>
@@ -2120,36 +2124,27 @@ function App() {
                                 <div className="history-empty">
                                     <h3>No Favorite Stations Yet</h3>
                                     <p>
-                                        Add stations to your favourites to
-                                        access them quickly.
+                                        Add stations to your favourites to access
+                                        them quickly.
                                     </p>
                                 </div>
                             )}
 
                         <div className="station-grid">
-
                             {!favoritesLoading &&
                                 favoriteStations.map((station) =>
                                     renderStationCard(station)
                                 )}
-
                         </div>
 
-                        <button
-                            className="back-button"
-                            onClick={handleStations}
-                        >
+                        <button className="back-button" onClick={handleStations}>
                             ← Back to Stations
                         </button>
-
                     </section>
 
                 ) : selectedStation ? (
-
-                    /* Station Details Page */
-
+                    /* Station Details */
                     <>
-
                         <button
                             className="back-button"
                             onClick={() => {
@@ -2164,9 +2159,7 @@ function App() {
                         </button>
 
                         <div className="station-heading">
-
                             <div className="station-heading-top">
-
                                 <div>
                                     <h2>{selectedStation.station_name}</h2>
                                     <p>{selectedStation.address}</p>
@@ -2189,14 +2182,12 @@ function App() {
                                         ? "♥ Remove Favorite"
                                         : "♡ Add Favorite"}
                                 </button>
-
                             </div>
 
                             <p>Operator: {selectedStation.operator}</p>
 
                             <p>
-                                Opening Hours:{" "}
-                                {String(selectedStation.opening_time)}
+                                Opening Hours: {String(selectedStation.opening_time)}
                                 {" - "}
                                 {String(selectedStation.closing_time)}
                             </p>
@@ -2206,44 +2197,70 @@ function App() {
                             <h3>Station Status and Utilization</h3>
 
                             <p>
-                                Available Chargers: {selectedStation.snapshot_available_count ?? "Not available"}
+                                Total Chargers: {selectedStation.total_chargers ?? 0}
                             </p>
-
                             <p>
-                                Utilization: {Number(selectedStation.utilization_rate ?? 0).toFixed(2)}%
+                                Available Chargers:{" "}
+                                {selectedStation.available_chargers ?? 0}
                             </p>
-
+                            <p>
+                                Booked Chargers:{" "}
+                                {selectedStation.booked_chargers ?? 0}
+                            </p>
+                            <p>
+                                Occupied Chargers:{" "}
+                                {selectedStation.occupied_chargers ?? 0}
+                            </p>
+                            <p>
+                                Utilization:{" "}
+                                {Number(
+                                    selectedStation.utilization_rate ?? 0
+                                ).toFixed(2)}%
+                            </p>
                             <p>
                                 Queue Length: {selectedStation.queue_length ?? 0}
                             </p>
 
-                          
+                            {selectedStation.recommendation_rank != null && (
+                                <>
+                                    <h3>Station Recommendation</h3>
+                                    <p>
+                                        Rank: #{selectedStation.recommendation_rank}
+                                    </p>
+                                    <p>
+                                        Score:{" "}
+                                        {Number(
+                                            selectedStation.recommendation_score ?? 0
+                                        ).toFixed(2)}
+                                    </p>
+                                    {selectedStation.recommendation_reason && (
+                                        <p>
+                                            {selectedStation.recommendation_reason}
+                                        </p>
+                                    )}
+                                </>
+                            )}
 
                             <h3>Demand Forecast</h3>
-
                             <p>
-                                Predicted Demand: {selectedStation.predicted_demand ?? "Not available"}
+                                Predicted Demand:{" "}
+                                {selectedStation.predicted_demand ?? "Not available"}
                             </p>
-
                             <p>
-                                Predicted Queue: {selectedStation.predicted_queue ?? "Not available"}
+                                Predicted Queue:{" "}
+                                {selectedStation.predicted_queue ?? "Not available"}
                             </p>
-
-                            
 
                             <h3>Pricing</h3>
-
                             <p>
-                                Price per kWh: {formatCurrency(selectedStation.price_per_kwh)}
+                                Price per kWh:{" "}
+                                {formatCurrency(selectedStation.price_per_kwh)}
                             </p>
-
                         </div>
 
-                        <h2>Available Chargers</h2>
+                        <h2>Chargers</h2>
 
-                        {chargerLoading && (
-                            <p>Loading chargers...</p>
-                        )}
+                        {chargerLoading && <p>Loading chargers...</p>}
 
                         {!chargerLoading &&
                             !error &&
@@ -2252,37 +2269,32 @@ function App() {
                             )}
 
                         <div className="station-grid">
-
                             {chargers.map((charger) => (
-
                                 <div
                                     className="station-card"
                                     key={charger.charger_id}
                                 >
-
                                     <h3>Charger #{charger.charger_id}</h3>
-
                                     <p>Connector: {charger.connector_type}</p>
                                     <p>Power: {charger.power_kw} kW</p>
-                                    <p>Status: {charger.status}</p>
 
                                     <p>
                                         Station Utilization:{" "}
-                                        {Number(charger.utilization_rate ?? 0).toFixed(2)}%
+                                        {Number(
+                                            charger.utilization_rate ?? 0
+                                        ).toFixed(2)}%
                                     </p>
-
                                     <p>
-                                        Predicted Demand: {charger.predicted_demand ?? "Not available"}
+                                        Predicted Demand:{" "}
+                                        {charger.predicted_demand ?? "Not available"}
                                     </p>
-
                                     <p>
-                                        Predicted Queue: {charger.predicted_queue ?? "Not available"}
+                                        Predicted Queue:{" "}
+                                        {charger.predicted_queue ?? "Not available"}
                                     </p>
-
-                                
-
                                     <p>
-                                        Price per kWh: {formatCurrency(charger.price_per_kwh)}
+                                        Price per kWh:{" "}
+                                        {formatCurrency(charger.price_per_kwh)}
                                     </p>
 
                                     <span
@@ -2296,102 +2308,88 @@ function App() {
                                     </span>
 
                                     {charger.status === "AVAILABLE" && (
-
                                         <button
                                             className="booking-button"
-                                            onClick={() => handleOpenBooking(charger)}
+                                            onClick={() =>
+                                                handleOpenBooking(charger)
+                                            }
                                         >
                                             Book Charger
                                         </button>
-
                                     )}
 
-                                    {selectedCharger?.charger_id === charger.charger_id && (
+                                    {selectedCharger &&
+                                        Number(selectedCharger.charger_id) ===
+                                        Number(charger.charger_id) && (
+                                            <form
+                                                className="booking-form"
+                                                onSubmit={handleBookingSubmit}
+                                            >
+                                                <h3>Book This Charger</h3>
 
-                                        <form
-                                            className="booking-form"
-                                            onSubmit={handleBookingSubmit}
-                                        >
-
-                                            <h3>Book This Charger</h3>
-
-                                            <label>Booking Date</label>
-
-                                            <input
-                                                type="date"
-                                                min={getToday()}
-                                                value={bookingDate}
-                                                onChange={(e) =>
-                                                    setBookingDate(e.target.value)
-                                                }
-                                                required
-                                            />
-
-                                            <label>Start Time</label>
-
-                                            <input
-                                                type="time"
-                                                value={startTime}
-                                                onChange={(e) =>
-                                                    setStartTime(e.target.value)
-                                                }
-                                                required
-                                            />
-
-                                            <label>End Time</label>
-
-                                            <input
-                                                type="time"
-                                                value={endTime}
-                                                onChange={(e) =>
-                                                    setEndTime(e.target.value)
-                                                }
-                                                required
-                                            />
-
-                                            <div className="booking-actions">
-
-                                                <button
-                                                    type="submit"
-                                                    disabled={bookingLoading}
-                                                >
-                                                    {bookingLoading
-                                                        ? "Booking..."
-                                                        : "Confirm Booking"}
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    className="cancel-button"
-                                                    onClick={() =>
-                                                        setSelectedCharger(null)
+                                                <label>Booking Date</label>
+                                                <input
+                                                    type="date"
+                                                    min={getToday()}
+                                                    value={bookingDate}
+                                                    onChange={(e) =>
+                                                        setBookingDate(e.target.value)
                                                     }
-                                                >
-                                                    Close
-                                                </button>
+                                                    required
+                                                />
 
-                                            </div>
+                                                <label>Start Time</label>
+                                                <input
+                                                    type="time"
+                                                    value={startTime}
+                                                    onChange={(e) =>
+                                                        setStartTime(e.target.value)
+                                                    }
+                                                    required
+                                                />
 
-                                        </form>
+                                                <label>End Time</label>
+                                                <input
+                                                    type="time"
+                                                    value={endTime}
+                                                    onChange={(e) =>
+                                                        setEndTime(e.target.value)
+                                                    }
+                                                    required
+                                                />
 
-                                    )}
+                                                <div className="booking-actions">
+                                                    <button
+                                                        type="submit"
+                                                        disabled={bookingLoading}
+                                                    >
+                                                        {bookingLoading
+                                                            ? "Booking..."
+                                                            : "Confirm Booking"}
+                                                    </button>
 
+                                                    <button
+                                                        type="button"
+                                                        className="cancel-button"
+                                                        onClick={() =>
+                                                            setSelectedCharger(null)
+                                                        }
+                                                    >
+                                                        Close
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        )}
                                 </div>
-
                             ))}
-
                         </div>
 
-                        {/* Station Ratings Section */}
-
+                        {/* Ratings */}
                         <section className="ratings-section">
-
                             <h2>Station Ratings & Reviews</h2>
 
                             <div className="rating-summary">
-
                                 <div className="rating-score">
-
                                     <span className="rating-number">
                                         {averageRating === null
                                             ? "—"
@@ -2411,13 +2409,10 @@ function App() {
                                         {totalRatings}{" "}
                                         {totalRatings === 1 ? "rating" : "ratings"}
                                     </span>
-
                                 </div>
-
                             </div>
 
                             <div className="rating-form-container">
-
                                 <h3>
                                     {ratings.some(
                                         (item) =>
@@ -2432,7 +2427,6 @@ function App() {
                                     className="rating-form"
                                     onSubmit={handleRatingSubmit}
                                 >
-
                                     <label htmlFor="ratingValue">
                                         Your Rating
                                     </label>
@@ -2485,38 +2479,29 @@ function App() {
                                                 ? "Update Rating"
                                                 : "Submit Rating"}
                                     </button>
-
                                 </form>
-
                             </div>
 
                             <div className="reviews-list">
-
                                 <h3>Customer Reviews</h3>
 
-                                {ratingsLoading && (
-                                    <p>Loading ratings...</p>
+                                {ratingsLoading && <p>Loading ratings...</p>}
+
+                                {!ratingsLoading && ratings.length === 0 && (
+                                    <div className="history-empty">
+                                        <p>
+                                            No ratings yet. Be the first to review
+                                            this station!
+                                        </p>
+                                    </div>
                                 )}
 
-                                {!ratingsLoading &&
-                                    ratings.length === 0 && (
-                                        <div className="history-empty">
-                                            <p>
-                                                No ratings yet. Be the first
-                                                to review this station!
-                                            </p>
-                                        </div>
-                                    )}
-
                                 {!ratingsLoading && ratings.map((rating) => (
-
                                     <div
                                         className="review-card"
                                         key={rating.rating_id}
                                     >
-
                                         <div className="review-header">
-
                                             <strong>
                                                 {rating.customer_name || "Customer"}
                                             </strong>
@@ -2527,12 +2512,9 @@ function App() {
                                                     5 - Number(rating.rating)
                                                 )}
                                             </span>
-
                                         </div>
 
-                                        {rating.review && (
-                                            <p>{rating.review}</p>
-                                        )}
+                                        {rating.review && <p>{rating.review}</p>}
 
                                         <span className="review-date">
                                             {formatDateTime(rating.created_at)}
@@ -2544,49 +2526,32 @@ function App() {
                                                     Your Review
                                                 </span>
                                             )}
-
                                     </div>
-
                                 ))}
-
                             </div>
-
                         </section>
-
                     </>
 
                 ) : (
-
                     /* Stations Dashboard */
-
                     <>
-
                         <h2>Customer Dashboard</h2>
-
-                        <p>
-                            Find and explore EV charging stations.
-                        </p>
+                        <p>Find and explore EV charging stations.</p>
 
                         <h2>Charging Stations</h2>
 
                         <div className="station-grid">
-
                             {stations.map((station) =>
                                 renderStationCard(station)
                             )}
-
                         </div>
 
                         {stations.length === 0 && !error && (
                             <p>No charging stations found.</p>
                         )}
-
                     </>
-
                 )}
-
             </main>
-
         </div>
     );
 }

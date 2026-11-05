@@ -1,7 +1,7 @@
-
 import { useEffect, useState } from "react";
 import AdminUsers from "./AdminUsers";
 import AdminBookings from "./AdminBookings";
+import AdminAnalytics from "./AdminAnalytics";
 
 const API_URL = "http://localhost:5000/api";
 
@@ -21,7 +21,7 @@ const initialChargerForm = {
 };
 
 function AdminDashboard({ user, onLogout, token }) {
-    // Dashboard states
+    // Dashboard
     const [summary, setSummary] = useState(null);
     const [chargerStatuses, setChargerStatuses] = useState([]);
     const [bookingStatuses, setBookingStatuses] = useState([]);
@@ -31,7 +31,7 @@ function AdminDashboard({ user, onLogout, token }) {
     // Navigation
     const [activeTab, setActiveTab] = useState("dashboard");
 
-    // Station management
+    // Stations
     const [stations, setStations] = useState([]);
     const [stationsLoading, setStationsLoading] = useState(false);
     const [stationError, setStationError] = useState("");
@@ -40,7 +40,7 @@ function AdminDashboard({ user, onLogout, token }) {
     const [editingStationId, setEditingStationId] = useState(null);
     const [showStationForm, setShowStationForm] = useState(false);
 
-    // Charger management
+    // Chargers
     const [selectedStation, setSelectedStation] = useState(null);
     const [chargers, setChargers] = useState([]);
     const [chargersLoading, setChargersLoading] = useState(false);
@@ -50,7 +50,10 @@ function AdminDashboard({ user, onLogout, token }) {
     const [editingChargerId, setEditingChargerId] = useState(null);
     const [showChargerForm, setShowChargerForm] = useState(false);
 
-    // Common API request helper
+    // =====================================================
+    // COMMON API REQUEST
+    // =====================================================
+
     const apiRequest = async (endpoint, method = "GET", body = null) => {
         const response = await fetch(`${API_URL}${endpoint}`, {
             method,
@@ -58,7 +61,7 @@ function AdminDashboard({ user, onLogout, token }) {
                 Authorization: `Bearer ${token}`,
                 "Content-Type": "application/json"
             },
-            ...(body ? { body: JSON.stringify(body) } : {})
+            ...(body !== null ? { body: JSON.stringify(body) } : {})
         });
 
         const data = await response.json();
@@ -70,7 +73,10 @@ function AdminDashboard({ user, onLogout, token }) {
         return data;
     };
 
-    // Fetch dashboard summary
+    // =====================================================
+    // DASHBOARD SUMMARY
+    // =====================================================
+
     const fetchDashboard = async () => {
         try {
             setLoading(true);
@@ -78,10 +84,9 @@ function AdminDashboard({ user, onLogout, token }) {
 
             const data = await apiRequest("/admin/summary");
 
-            setSummary(data.summary);
+            setSummary(data.summary || null);
             setChargerStatuses(data.chargerStatuses || []);
             setBookingStatuses(data.bookingStatuses || []);
-
         } catch (err) {
             setError(err.message);
         } finally {
@@ -90,19 +95,22 @@ function AdminDashboard({ user, onLogout, token }) {
     };
 
     useEffect(() => {
-        fetchDashboard();
+        if (token) {
+            fetchDashboard();
+        }
     }, [token]);
 
-    // Fetch all stations
+    // =====================================================
+    // STATION MANAGEMENT
+    // =====================================================
+
     const fetchStations = async () => {
         try {
             setStationsLoading(true);
             setStationError("");
 
             const data = await apiRequest("/admin/stations");
-
             setStations(data.stations || []);
-
         } catch (err) {
             setStationError(err.message);
         } finally {
@@ -111,12 +119,11 @@ function AdminDashboard({ user, onLogout, token }) {
     };
 
     useEffect(() => {
-        if (activeTab === "stations") {
+        if (activeTab === "stations" && token) {
             fetchStations();
         }
     }, [activeTab, token]);
 
-    // Fetch chargers for selected station
     const fetchChargers = async (station) => {
         try {
             setSelectedStation(station);
@@ -131,7 +138,6 @@ function AdminDashboard({ user, onLogout, token }) {
             );
 
             setChargers(data.chargers || []);
-
         } catch (err) {
             setChargerError(err.message);
             setChargers([]);
@@ -140,7 +146,189 @@ function AdminDashboard({ user, onLogout, token }) {
         }
     };
 
-    // Dashboard calculations
+    const handleStationInput = (e) => {
+        const { name, value } = e.target;
+
+        setStationForm((prev) => ({
+            ...prev,
+            [name]: value
+        }));
+    };
+
+    const openAddStationForm = () => {
+        setEditingStationId(null);
+        setStationForm(initialStationForm);
+        setStationMessage("");
+        setStationError("");
+        setShowStationForm(true);
+    };
+
+    const openEditStationForm = (station) => {
+        setEditingStationId(station.station_id);
+
+        setStationForm({
+            station_name: station.station_name || "",
+            address: station.address || "",
+            latitude: station.latitude ?? "",
+            longitude: station.longitude ?? "",
+            operator: station.operator || "",
+            opening_time: station.opening_time?.slice(0, 5) || "06:00",
+            closing_time: station.closing_time?.slice(0, 5) || "22:00"
+        });
+
+        setStationMessage("");
+        setStationError("");
+        setShowStationForm(true);
+    };
+
+    const handleStationSubmit = async (e) => {
+        e.preventDefault();
+
+        try {
+            setStationError("");
+            setStationMessage("");
+
+            const endpoint = editingStationId
+                ? `/admin/stations/${editingStationId}`
+                : "/admin/stations";
+
+            const method = editingStationId ? "PUT" : "POST";
+
+            const data = await apiRequest(endpoint, method, stationForm);
+
+            setStationMessage(data.message || "Station saved successfully.");
+            setShowStationForm(false);
+            setEditingStationId(null);
+            setStationForm(initialStationForm);
+
+            await fetchStations();
+            await fetchDashboard();
+        } catch (err) {
+            setStationError(err.message);
+        }
+    };
+
+    const handleStationStatus = async (stationId, status) => {
+        const confirmed = window.confirm(
+            `Are you sure you want to change this station status to ${status}?`
+        );
+
+        if (!confirmed) return;
+
+        try {
+            setStationError("");
+            setStationMessage("");
+
+            const data = await apiRequest(
+                `/admin/stations/${stationId}/status`,
+                "PATCH",
+                { status }
+            );
+
+            setStationMessage(data.message || "Station status updated.");
+
+            await fetchStations();
+            await fetchDashboard();
+        } catch (err) {
+            setStationError(err.message);
+        }
+    };
+
+    // =====================================================
+    // CHARGER MANAGEMENT
+    // =====================================================
+
+    const handleChargerInput = (e) => {
+        const { name, value } = e.target;
+
+        setChargerForm((prev) => ({
+            ...prev,
+            [name]: value
+        }));
+    };
+
+    const openAddChargerForm = () => {
+        setEditingChargerId(null);
+        setChargerForm(initialChargerForm);
+        setChargerError("");
+        setChargerMessage("");
+        setShowChargerForm(true);
+    };
+
+    const openEditChargerForm = (charger) => {
+        setEditingChargerId(charger.charger_id);
+
+        setChargerForm({
+            connector_type: charger.connector_type || "",
+            power_kw: charger.power_kw ?? ""
+        });
+
+        setChargerError("");
+        setChargerMessage("");
+        setShowChargerForm(true);
+    };
+
+    const handleChargerSubmit = async (e) => {
+        e.preventDefault();
+
+        if (!selectedStation) return;
+
+        try {
+            setChargerError("");
+            setChargerMessage("");
+
+            const endpoint = editingChargerId
+                ? `/admin/chargers/${editingChargerId}`
+                : `/admin/stations/${selectedStation.station_id}/chargers`;
+
+            const method = editingChargerId ? "PUT" : "POST";
+
+            const data = await apiRequest(endpoint, method, chargerForm);
+
+            setChargerMessage(data.message || "Charger saved successfully.");
+            setShowChargerForm(false);
+            setEditingChargerId(null);
+            setChargerForm(initialChargerForm);
+
+            await fetchChargers(selectedStation);
+            await fetchStations();
+            await fetchDashboard();
+        } catch (err) {
+            setChargerError(err.message);
+        }
+    };
+
+    const handleChargerStatus = async (chargerId, status) => {
+        const confirmed = window.confirm(
+            `Are you sure you want to change this charger status to ${status}?`
+        );
+
+        if (!confirmed) return;
+
+        try {
+            setChargerError("");
+            setChargerMessage("");
+
+            const data = await apiRequest(
+                `/admin/chargers/${chargerId}/status`,
+                "PATCH",
+                { status }
+            );
+
+            setChargerMessage(data.message || "Charger status updated.");
+
+            await fetchChargers(selectedStation);
+            await fetchStations();
+            await fetchDashboard();
+        } catch (err) {
+            setChargerError(err.message);
+        }
+    };
+
+    // =====================================================
+    // COMMON DISPLAY HELPERS
+    // =====================================================
+
     const totalChargers = Number(summary?.totalChargers || 0);
 
     const getPercentage = (count) => {
@@ -165,7 +353,6 @@ function AdminDashboard({ user, onLogout, token }) {
         return colors[status] || "#64748b";
     };
 
-    // Common styles
     const cardStyle = {
         background: "#fff",
         padding: "24px",
@@ -219,232 +406,48 @@ function AdminDashboard({ user, onLogout, token }) {
     );
 
     const statCards = [
-        {
-            title: "Total Users",
-            value: summary?.totalUsers,
-            icon: "👥"
-        },
-        {
-            title: "Total Stations",
-            value: summary?.totalStations,
-            icon: "📍"
-        },
-        {
-            title: "Total Chargers",
-            value: summary?.totalChargers,
-            icon: "⚡"
-        },
-        {
-            title: "Total Bookings",
-            value: summary?.totalBookings,
-            icon: "📅"
-        },
-        {
-            title: "Charging Sessions",
-            value: summary?.totalSessions,
-            icon: "🔋"
-        }
+        { title: "Total Users", value: summary?.totalUsers, icon: "👥" },
+        { title: "Total Stations", value: summary?.totalStations, icon: "📍" },
+        { title: "Total Chargers", value: summary?.totalChargers, icon: "⚡" },
+        { title: "Total Bookings", value: summary?.totalBookings, icon: "📅" },
+        { title: "Charging Sessions", value: summary?.totalSessions, icon: "🔋" }
     ];
 
-    // Station form handlers
-    const handleStationInput = (e) => {
-        const { name, value } = e.target;
+    // =====================================================
+    // NAVIGATION
+    // =====================================================
 
-        setStationForm((prev) => ({
-            ...prev,
-            [name]: value
-        }));
-    };
+    const tabs = [
+        { id: "dashboard", label: "Dashboard" },
+        { id: "analytics", label: "Analytics" },
+        { id: "stations", label: "Manage Stations" },
+        { id: "users", label: "Manage Users" },
+        { id: "bookings", label: "Manage Bookings" }
+    ];
 
-    const openAddStationForm = () => {
-        setEditingStationId(null);
-        setStationForm(initialStationForm);
-        setStationMessage("");
-        setStationError("");
-        setShowStationForm(true);
-    };
+    const changeTab = (tab) => {
+        setActiveTab(tab);
 
-    const openEditStationForm = (station) => {
-        setEditingStationId(station.station_id);
-
-        setStationForm({
-            station_name: station.station_name,
-            address: station.address,
-            latitude: station.latitude,
-            longitude: station.longitude,
-            operator: station.operator || "",
-            opening_time: station.opening_time?.slice(0, 5) || "06:00",
-            closing_time: station.closing_time?.slice(0, 5) || "22:00"
-        });
-
-        setStationMessage("");
-        setStationError("");
-        setShowStationForm(true);
-    };
-
-    const handleStationSubmit = async (e) => {
-        e.preventDefault();
-
-        try {
-            setStationError("");
-            setStationMessage("");
-
-            const endpoint = editingStationId
-                ? `/admin/stations/${editingStationId}`
-                : "/admin/stations";
-
-            const method = editingStationId ? "PUT" : "POST";
-
-            const data = await apiRequest(
-                endpoint,
-                method,
-                stationForm
-            );
-
-            setStationMessage(data.message);
-            setShowStationForm(false);
-            setEditingStationId(null);
-            setStationForm(initialStationForm);
-
-            await fetchStations();
-            await fetchDashboard();
-
-        } catch (err) {
-            setStationError(err.message);
+        if (tab !== "stations") {
+            setSelectedStation(null);
+            setChargers([]);
         }
     };
 
-    // Change station status
-    const handleStationStatus = async (stationId, status) => {
-        const confirmed = window.confirm(
-            `Are you sure you want to change this station status to ${status}?`
-        );
-
-        if (!confirmed) return;
-
-        try {
-            setStationError("");
-            setStationMessage("");
-
-            const data = await apiRequest(
-                `/admin/stations/${stationId}/status`,
-                "PATCH",
-                { status }
-            );
-
-            setStationMessage(data.message);
-
-            await fetchStations();
-            await fetchDashboard();
-
-        } catch (err) {
-            setStationError(err.message);
-        }
-    };
-
-    // Charger form handlers
-    const handleChargerInput = (e) => {
-        const { name, value } = e.target;
-
-        setChargerForm((prev) => ({
-            ...prev,
-            [name]: value
-        }));
-    };
-
-    const openAddChargerForm = () => {
-        setEditingChargerId(null);
-        setChargerForm(initialChargerForm);
-        setChargerError("");
-        setChargerMessage("");
-        setShowChargerForm(true);
-    };
-
-    const openEditChargerForm = (charger) => {
-        setEditingChargerId(charger.charger_id);
-
-        setChargerForm({
-            connector_type: charger.connector_type,
-            power_kw: charger.power_kw
-        });
-
-        setChargerError("");
-        setChargerMessage("");
-        setShowChargerForm(true);
-    };
-
-    const handleChargerSubmit = async (e) => {
-        e.preventDefault();
-
-        try {
-            setChargerError("");
-            setChargerMessage("");
-
-            const endpoint = editingChargerId
-                ? `/admin/chargers/${editingChargerId}`
-                : `/admin/stations/${selectedStation.station_id}/chargers`;
-
-            const method = editingChargerId ? "PUT" : "POST";
-
-            const data = await apiRequest(
-                endpoint,
-                method,
-                chargerForm
-            );
-
-            setChargerMessage(data.message);
-            setShowChargerForm(false);
-            setEditingChargerId(null);
-            setChargerForm(initialChargerForm);
-
-            await fetchChargers(selectedStation);
-            await fetchStations();
-            await fetchDashboard();
-
-        } catch (err) {
-            setChargerError(err.message);
-        }
-    };
-
-    // Change charger status
-    const handleChargerStatus = async (chargerId, status) => {
-        const confirmed = window.confirm(
-            `Change charger status to ${status}?`
-        );
-
-        if (!confirmed) return;
-
-        try {
-            setChargerError("");
-            setChargerMessage("");
-
-            const data = await apiRequest(
-                `/admin/chargers/${chargerId}/status`,
-                "PATCH",
-                { status }
-            );
-
-            setChargerMessage(data.message);
-
-            await fetchChargers(selectedStation);
-            await fetchStations();
-            await fetchDashboard();
-
-        } catch (err) {
-            setChargerError(err.message);
-        }
-    };
+    // =====================================================
+    // RENDER
+    // =====================================================
 
     return (
         <div className="dashboard">
 
-            {/* Navbar */}
+            {/* NAVBAR */}
 
             <header className="navbar">
                 <h1>⚡ EVCharge Admin</h1>
 
                 <div className="navbar-right">
-                    <span>Welcome, {user.name}</span>
+                    <span>Welcome, {user?.name || "Admin"}</span>
 
                     <button
                         className="logout-button"
@@ -455,7 +458,7 @@ function AdminDashboard({ user, onLogout, token }) {
                 </div>
             </header>
 
-            {/* Navigation */}
+            {/* NAVIGATION TABS */}
 
             <div style={{
                 display: "flex",
@@ -465,71 +468,30 @@ function AdminDashboard({ user, onLogout, token }) {
                 borderBottom: "1px solid #e5e7eb",
                 flexWrap: "wrap"
             }}>
-                <button
-                    onClick={() => {
-                        setActiveTab("dashboard");
-                        setSelectedStation(null);
-                    }}
-                    style={{
-                        ...buttonStyle,
-                        background: activeTab === "dashboard"
-                            ? "#2563eb" : "#e5e7eb",
-                        color: activeTab === "dashboard"
-                            ? "#fff" : "#111827"
-                    }}
-                >
-                    Dashboard
-                </button>
-
-                <button
-                    onClick={() => {
-                        setActiveTab("stations");
-                        setSelectedStation(null);
-                    }}
-                    style={{
-                        ...buttonStyle,
-                        background: activeTab === "stations"
-                            ? "#2563eb" : "#e5e7eb",
-                        color: activeTab === "stations"
-                            ? "#fff" : "#111827"
-                    }}
-                >
-                    Manage Stations
-                </button>
-
-                <button
-                    onClick={() => {
-                        setActiveTab("users");
-                        setSelectedStation(null);
-                    }}
-                    style={{
-                        ...buttonStyle,
-                        background: activeTab === "users"
-                            ? "#2563eb" : "#e5e7eb",
-                        color: activeTab === "users"
-                            ? "#fff" : "#111827"
-                    }}
-                >
-                    Manage Users
-                </button>
-                <button
-                    onClick={() => {
-                        setActiveTab("bookings");
-                        setSelectedStation(null);
-                    }}
-                    style={{
-                        ...buttonStyle,
-                        background: activeTab === "bookings" ? "#2563eb" : "#e5e7eb",
-                        color: activeTab === "bookings" ? "#fff" : "#111827"
-                    }}
-                >
-                    Manage Bookings
-                </button>
+                {tabs.map((tab) => (
+                    <button
+                        key={tab.id}
+                        onClick={() => changeTab(tab.id)}
+                        style={{
+                            ...buttonStyle,
+                            background: activeTab === tab.id
+                                ? "#2563eb"
+                                : "#e5e7eb",
+                            color: activeTab === tab.id
+                                ? "#fff"
+                                : "#111827"
+                        }}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
             </div>
 
             <main style={{ padding: "30px" }}>
 
-                {/* DASHBOARD TAB */}
+                {/* =================================================
+                    DASHBOARD TAB
+                ================================================= */}
 
                 {activeTab === "dashboard" && (
                     <>
@@ -552,7 +514,7 @@ function AdminDashboard({ user, onLogout, token }) {
 
                         {!loading && summary && (
                             <>
-                                {/* Statistics */}
+                                {/* STATISTICS */}
 
                                 <div style={{
                                     display: "grid",
@@ -584,7 +546,7 @@ function AdminDashboard({ user, onLogout, token }) {
                                     ))}
                                 </div>
 
-                                {/* Status Information */}
+                                {/* STATUS INFORMATION */}
 
                                 <div style={{
                                     display: "grid",
@@ -593,14 +555,11 @@ function AdminDashboard({ user, onLogout, token }) {
                                     gap: "20px",
                                     marginTop: "30px"
                                 }}>
-
-                                    {/* Charger Availability */}
-
                                     <div style={cardStyle}>
                                         <h3>Charger Availability</h3>
 
                                         <p style={{ color: "#64748b" }}>
-                                            Current status of all chargers
+                                            Current status of all chargers.
                                         </p>
 
                                         {statusList(chargerStatuses)}
@@ -630,25 +589,32 @@ function AdminDashboard({ user, onLogout, token }) {
                                         </div>
                                     </div>
 
-                                    {/* Booking Status */}
-
                                     <div style={cardStyle}>
                                         <h3>Booking Status</h3>
 
                                         <p style={{ color: "#64748b" }}>
-                                            Overview of customer bookings
+                                            Overview of customer bookings.
                                         </p>
 
                                         {statusList(bookingStatuses)}
                                     </div>
-
                                 </div>
                             </>
                         )}
                     </>
                 )}
 
-                {/* MANAGE STATIONS TAB */}
+                {/* =================================================
+                    ANALYTICS TAB
+                ================================================= */}
+
+                {activeTab === "analytics" && (
+                    <AdminAnalytics token={token} />
+                )}
+
+                {/* =================================================
+                    MANAGE STATIONS TAB
+                ================================================= */}
 
                 {activeTab === "stations" && (
                     <>
@@ -679,7 +645,10 @@ function AdminDashboard({ user, onLogout, token }) {
                         </div>
 
                         {stationMessage && (
-                            <p style={{ color: "#16a34a", fontWeight: "600" }}>
+                            <p style={{
+                                color: "#16a34a",
+                                fontWeight: "600"
+                            }}>
                                 {stationMessage}
                             </p>
                         )}
@@ -690,7 +659,7 @@ function AdminDashboard({ user, onLogout, token }) {
                             </p>
                         )}
 
-                        {/* Add / Edit Station Form */}
+                        {/* STATION FORM */}
 
                         {showStationForm && (
                             <div style={{
@@ -830,7 +799,7 @@ function AdminDashboard({ user, onLogout, token }) {
                             </div>
                         )}
 
-                        {/* Station List */}
+                        {/* STATION LIST */}
 
                         <div style={{
                             ...cardStyle,
@@ -980,7 +949,7 @@ function AdminDashboard({ user, onLogout, token }) {
                             )}
                         </div>
 
-                        {/* Charger Management */}
+                        {/* CHARGER MANAGEMENT */}
 
                         {selectedStation && (
                             <div style={{
@@ -998,6 +967,7 @@ function AdminDashboard({ user, onLogout, token }) {
                                         <h3>
                                             Chargers - {selectedStation.station_name}
                                         </h3>
+
                                         <p style={{ color: "#64748b" }}>
                                             Manage chargers belonging to this station.
                                         </p>
@@ -1049,7 +1019,7 @@ function AdminDashboard({ user, onLogout, token }) {
                                     </p>
                                 )}
 
-                                {/* Add / Edit Charger Form */}
+                                {/* CHARGER FORM */}
 
                                 {showChargerForm && (
                                     <form
@@ -1137,7 +1107,7 @@ function AdminDashboard({ user, onLogout, token }) {
                                     </form>
                                 )}
 
-                                {/* Charger List */}
+                                {/* CHARGER LIST */}
 
                                 {chargersLoading && (
                                     <p>Loading chargers...</p>
@@ -1263,11 +1233,18 @@ function AdminDashboard({ user, onLogout, token }) {
                     </>
                 )}
 
-                {/* MANAGE USERS TAB */}
+                {/* =================================================
+                    MANAGE USERS TAB
+                ================================================= */}
 
                 {activeTab === "users" && (
                     <AdminUsers token={token} />
                 )}
+
+                {/* =================================================
+                    MANAGE BOOKINGS TAB
+                ================================================= */}
+
                 {activeTab === "bookings" && (
                     <AdminBookings token={token} />
                 )}
